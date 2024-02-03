@@ -38,7 +38,7 @@ from PIL import Image
 
 
 local_rank = None
-
+DEBUG = True
 
 def rank0_print(*args):
     if local_rank == 0:
@@ -586,13 +586,23 @@ def preprocess(
     3. Tokenize the concatenated conversation;
     4. Make a deepcopy as the target. Mask human words with IGNORE_INDEX.
     """
+    if DEBUG:
+        print("Preprocessing...")
     if conversation_lib.default_conversation.sep_style == conversation_lib.SeparatorStyle.PLAIN:
+        if DEBUG:
+            print("Preprocessing plain...")
         return preprocess_plain(sources, tokenizer)
     if conversation_lib.default_conversation.sep_style == conversation_lib.SeparatorStyle.LLAMA_2:
+        if DEBUG:
+            print("Preprocessing llama_2...")
         return preprocess_llama_2(sources, tokenizer, has_image=has_image)
     if conversation_lib.default_conversation.version.startswith("v1"):
+        if DEBUG:
+            print("Preprocessing v1...")
         return preprocess_v1(sources, tokenizer, has_image=has_image)
     if conversation_lib.default_conversation.version == "mpt":
+        if DEBUG:
+            print("Preprocessing mpt...")
         return preprocess_mpt(sources, tokenizer)
     # add end signal and concatenate together
     conversations = []
@@ -643,8 +653,10 @@ class LazySupervisedDataset(Dataset):
     def lengths(self):
         length_list = []
         for sample in self.list_data_dict:
-            img_tokens = 128 if 'image' in sample else 0
-            length_list.append(sum(len(conv['value'].split()) for conv in sample['conversations']) + img_tokens)
+            num_images = sum('image' in k for k in sample)
+            img_tokens = 128
+            length_list.append(sum(len(conv['value'].split()) for conv in sample['conversations']) + img_tokens*num_images)
+            # number of words plus tokens per image
         return length_list
 
     @property
@@ -652,7 +664,7 @@ class LazySupervisedDataset(Dataset):
         length_list = []
         for sample in self.list_data_dict:
             cur_len = sum(len(conv['value'].split()) for conv in sample['conversations'])
-            cur_len = cur_len if 'image' in sample else -cur_len
+            cur_len = cur_len if 'image_0' in sample else -cur_len
             length_list.append(cur_len)
         return length_list
 
@@ -662,14 +674,19 @@ class LazySupervisedDataset(Dataset):
             if isinstance(i, int):
                 sources = [sources]
             assert len(sources) == 1, "Don't know why it is wrapped to a list"  # FIXME
-            if 'image' in sources[0]:
-                image_file = self.list_data_dict[i]['image']
-                image_folder = self.data_args.image_folder
-                processor = self.data_args.image_processor
+            image_files = [k for k in self.list_data_dict[i] if 'image' in k]
+            image_folder = self.data_args.image_folder
+            images = []
+            processor = self.data_args.image_processor
+            for i,image_file in enumerate(image_files):
+                if i>5:
+                    break
                 try:
                     image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
                 except:
-                    image = Image.open(os.path.join(image_folder, image_file.replace("jpg","gif"))).convert('RGB')
+                    print('image not found:', os.path.join(image_folder, image_file))
+                    image = Image.new('RGB', (512, 512))
+                    # Image.open(os.path.join(image_folder, image_file.replace("jpg","gif"))).convert('RGB')
                 if self.data_args.image_aspect_ratio == 'pad':
                     def expand2square(pil_img, background_color):
                         width, height = pil_img.size
@@ -686,23 +703,30 @@ class LazySupervisedDataset(Dataset):
                     image = expand2square(image, tuple(int(x*255) for x in processor.image_mean))
                     image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
                 else:
+                    print('[Warning]: image file not able to process.')
                     image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
-                sources = preprocess_multimodal(
-                    copy.deepcopy([e["conversations"] for e in sources]),
-                    self.data_args)
-            else:
-                sources = copy.deepcopy([e["conversations"] for e in sources])
+                images.append(image)
+                # pad image
+                images = [img.unsqueeze(0) for img in images]
+                num_images = len(images)
+                images = torch.cat(images, dim=0)
+                images = torch.cat([images, torch.zeros(5-num_images, 3, 336, 336)], dim=0)
+            # sources = preprocess_multimodal(
+            #     copy.deepcopy([e["conversations"] for e in sources]),
+            #     self.data_args)
+            # don't think I need this since I'm not using mpt or mm_im_start_end and I modified tokenizer_image_token
+
             data_dict = preprocess(
                 sources,
                 self.tokenizer,
-                has_image=('image' in self.list_data_dict[i]))
+                has_image=(len(images)>0))
             if isinstance(i, int):
                 data_dict = dict(input_ids=data_dict["input_ids"][0],
                                 labels=data_dict["labels"][0])
 
             # image exist in the data
-            if 'image' in self.list_data_dict[i]:
-                data_dict['image'] = image
+            if 'image_0' in self.list_data_dict[i]:
+                data_dict['image'] = images
             elif self.data_args.is_multimodal:
                 # image does not exist in the data, but the model is multimodal
                 crop_size = self.data_args.image_processor.crop_size
