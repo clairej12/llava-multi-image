@@ -35,6 +35,7 @@ from llava.model import *
 from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
+import pdb
 
 
 local_rank = None
@@ -308,6 +309,8 @@ def preprocess_multimodal(
 
     for source in sources:
         for sentence in source:
+            if "<image_" in sentence["value"]:
+                sentence["value"] = sentence["value"].split("<image_")[0]+DEFAULT_IMAGE_TOKEN
             if DEFAULT_IMAGE_TOKEN in sentence['value']:
                 sentence['value'] = sentence['value'].replace(DEFAULT_IMAGE_TOKEN, '').strip()
                 sentence['value'] = DEFAULT_IMAGE_TOKEN + '\n' + sentence['value']
@@ -413,6 +416,7 @@ def preprocess_v1(
     roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
 
     # Apply prompt templates
+    print("v1 sources: ", sources)
     conversations = []
     for i, source in enumerate(sources):
         if roles[source[0]["from"]] != conv.roles[0]:
@@ -657,6 +661,7 @@ class LazySupervisedDataset(Dataset):
             img_tokens = 128
             length_list.append(sum(len(conv['value'].split()) for conv in sample['conversations']) + img_tokens*num_images)
             # number of words plus tokens per image
+        print("length list: ", length_list)
         return length_list
 
     @property
@@ -666,23 +671,29 @@ class LazySupervisedDataset(Dataset):
             cur_len = sum(len(conv['value'].split()) for conv in sample['conversations'])
             cur_len = cur_len if 'image_0' in sample else -cur_len
             length_list.append(cur_len)
+        print("modality_lengths: ", length_list)
         return length_list
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
         try:
+            max_images = 4
             sources = self.list_data_dict[i]
+            print("sources: ", sources)
             if isinstance(i, int):
+                # print(f"{i} is int, wrapping sources")
                 sources = [sources]
             assert len(sources) == 1, "Don't know why it is wrapped to a list"  # FIXME
-            image_files = [k for k in self.list_data_dict[i] if 'image' in k]
+            image_files = [v for k,v in self.list_data_dict[i].items() if 'image' in k]
+            print("image_files: ", image_files)
             image_folder = self.data_args.image_folder
             images = []
             processor = self.data_args.image_processor
             for i,image_file in enumerate(image_files):
-                if i>5:
+                if i>max_images-1:
                     break
                 try:
                     image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
+                    # print(f"original image {i} shape: ", image.size)
                 except:
                     print('image not found:', os.path.join(image_folder, image_file))
                     image = Image.new('RGB', (512, 512))
@@ -706,16 +717,19 @@ class LazySupervisedDataset(Dataset):
                     print('[Warning]: image file not able to process.')
                     image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
                 images.append(image)
-                # pad image
-                images = [img.unsqueeze(0) for img in images]
-                num_images = len(images)
-                images = torch.cat(images, dim=0)
-                images = torch.cat([images, torch.zeros(5-num_images, 3, 336, 336)], dim=0)
-            # sources = preprocess_multimodal(
-            #     copy.deepcopy([e["conversations"] for e in sources]),
-            #     self.data_args)
-            # don't think I need this since I'm not using mpt or mm_im_start_end and I modified tokenizer_image_token
-
+                # print(f"image {i} shape: ", image.shape)
+            # pad image
+            # print("length of images: ", len(images))
+            images = [img.unsqueeze(0) for img in images]
+            num_images = len(images)
+            images = torch.cat(images, dim=0)
+            # print("just images shape: ", images.shape)
+            images = torch.cat([images, torch.zeros(max_images-num_images, 3, 336, 336)], dim=0)
+            # print("padded images shape: ", images.shape)
+            sources = preprocess_multimodal(
+                copy.deepcopy([e["conversations"] for e in sources]),
+                self.data_args)
+            # print("length of sources: ", len(sources))
             data_dict = preprocess(
                 sources,
                 self.tokenizer,
@@ -723,14 +737,15 @@ class LazySupervisedDataset(Dataset):
             if isinstance(i, int):
                 data_dict = dict(input_ids=data_dict["input_ids"][0],
                                 labels=data_dict["labels"][0])
-
+            # print("data_dict: ", data_dict)
             # image exist in the data
             if 'image_0' in self.list_data_dict[i]:
                 data_dict['image'] = images
+                # print("add image to data_dict")
             elif self.data_args.is_multimodal:
                 # image does not exist in the data, but the model is multimodal
                 crop_size = self.data_args.image_processor.crop_size
-                data_dict['image'] = torch.zeros(3, crop_size['height'], crop_size['width'])
+                data_dict['image'] = torch.zeros(max_images, 3, crop_size['height'], crop_size['width'])
             return data_dict
         except Exception as e:
             print(e)
@@ -947,18 +962,20 @@ def train():
                 if hasattr(module, 'weight'):
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
-
+    
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
+    pdb.set_trace()
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,
                     args=training_args,
                     **data_module)
-
+    pdb.set_trace()
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)
     else:
         trainer.train()
+    pdb.set_trace()
     trainer.save_state()
 
     model.config.use_cache = True
