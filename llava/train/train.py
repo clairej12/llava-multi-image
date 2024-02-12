@@ -965,17 +965,17 @@ def train():
     
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
-    pdb.set_trace()
+    # pdb.set_trace()
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,
                     args=training_args,
                     **data_module)
-    pdb.set_trace()
+    # pdb.set_trace()
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)
     else:
         trainer.train()
-    pdb.set_trace()
+    # pdb.set_trace()
     trainer.save_state()
 
     model.config.use_cache = True
