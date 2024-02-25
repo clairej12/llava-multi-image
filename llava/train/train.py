@@ -661,7 +661,7 @@ class LazySupervisedDataset(Dataset):
             img_tokens = 128
             length_list.append(sum(len(conv['value'].split()) for conv in sample['conversations']) + img_tokens*num_images)
             # number of words plus tokens per image
-        print("length list: ", length_list)
+        # print("length list: ", length_list)
         return length_list
 
     @property
@@ -671,7 +671,7 @@ class LazySupervisedDataset(Dataset):
             cur_len = sum(len(conv['value'].split()) for conv in sample['conversations'])
             cur_len = cur_len if 'image_0' in sample else -cur_len
             length_list.append(cur_len)
-        print("modality_lengths: ", length_list)
+        # print("modality_lengths: ", length_list)
         return length_list
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
@@ -691,13 +691,16 @@ class LazySupervisedDataset(Dataset):
             for i,image_file in enumerate(image_files):
                 if i>max_images-1:
                     break
-                try:
-                    image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
-                    # print(f"original image {i} shape: ", image.size)
-                except:
+                image_path = os.path.join(image_folder, image_file)
+                if os.path.exists(image_path):
+                    image = Image.open(image_path).convert('RGB')
+                elif os.path.exists(image_path.replace("jpg","gif")):
+                    image = Image.open(image_path.replace("jpg","gif")).convert('RGB')
+                else:
                     print('image not found:', os.path.join(image_folder, image_file))
                     image = Image.new('RGB', (512, 512))
-                    # Image.open(os.path.join(image_folder, image_file.replace("jpg","gif"))).convert('RGB')
+                # print(f"original image {i} shape: ", image.size)
+                    
                 if self.data_args.image_aspect_ratio == 'pad':
                     def expand2square(pil_img, background_color):
                         width, height = pil_img.size
