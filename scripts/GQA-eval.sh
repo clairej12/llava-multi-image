@@ -16,6 +16,7 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
         --image-folder  /mnt/aimsfrontierresearcheu01/gpt-rad/data/llava-1.5/visual_instruction_tuning/eval/gqa/data/images \
         --answers-file /mnt/aimsfrontierresearcheu01/gpt-rad/data/llava-1.5/visual_instruction_tuning/eval/gqa/answers/$SPLIT/$CKPT/${CHUNKS}_${IDX}.jsonl \
         --num-chunks $CHUNKS \
+        --num_images 4 \
         --chunk-idx $IDX \
         --temperature 0 \
         --conv-mode vicuna_v1 &

@@ -120,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
-    parser.add_argument("--num_images", type=int, default=1)
+    parser.add_argument("--num_images", type=int, default=4)
     args = parser.parse_args()
 
     eval_model(args)
