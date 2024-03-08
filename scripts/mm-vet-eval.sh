@@ -9,8 +9,8 @@ CKPT="llava-v1.5-13b-baseline"
 SPLIT="mm-vet-eval"
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
-    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.model_vqa_multi \
-        --model-path /mnt/sdrgstd01scus/user/v-clairejin/llava_1.5_13B_finetune_v2 \
+    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.model_vqa_loader \
+        --model-path /mnt/sdrgstd01scus/user/v-clairejin/llava_1.5_13B_finetune_v3 \
         --question-file /mnt/icodeeval01wus3/user/v-clairejin/mm-vet/$SPLIT.jsonl \
         --image-folder /mnt/icodeeval01wus3/user/v-clairejin/mm-vet/images/ \
         --answers-file /mnt/icodeeval01wus3/user/v-clairejin/mm-vet/results/$SPLIT/$CKPT/${CHUNKS}_${IDX}.jsonl \
