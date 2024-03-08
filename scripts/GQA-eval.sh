@@ -5,18 +5,17 @@ IFS=',' read -ra GPULIST <<< "$gpu_list"
 
 CHUNKS=${#GPULIST[@]}
 
-CKPT="llava-v1.5-13b-gpt4-finetune"
+CKPT="llava-v1.5-13b-baseline"
 SPLIT="llava_gqa_testdev_balanced"
 GQADIR="/mnt/aimsfrontierresearcheu01/gpt-rad/data/llava-1.5/visual_instruction_tuning/eval/gqa/data/"
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
-    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.model_vqa_multi \
-        --model-path /mnt/sdrgstd01scus/user/v-clairejin/llava_1.5_13B_gpt4_finetune_v2/ \
+    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.model_vqa_loader \
+        --model-path /mnt/sdrgstd01scus/user/v-clairejin/llava_1.5_13B_finetune_v3/ \
         --question-file /mnt/aimsfrontierresearcheu01/gpt-rad/data/llava-1.5/visual_instruction_tuning/eval/gqa/$SPLIT.jsonl \
         --image-folder  /mnt/aimsfrontierresearcheu01/gpt-rad/data/llava-1.5/visual_instruction_tuning/eval/gqa/data/images \
         --answers-file /mnt/aimsfrontierresearcheu01/gpt-rad/data/llava-1.5/visual_instruction_tuning/eval/gqa/answers/$SPLIT/$CKPT/${CHUNKS}_${IDX}.jsonl \
         --num-chunks $CHUNKS \
-        --num_images 4 \
         --chunk-idx $IDX \
         --temperature 0 \
         --conv-mode vicuna_v1 &
